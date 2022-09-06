@@ -2542,7 +2542,13 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                             parent.debug('authlog', `${authStrategy}: Login user found in required group: ${domain.authstrategies[authStrategy].groups.required[i]}`);
                         }
                     }
-                    if (userMembershipMatch === false) { parent.debug('authlog', `${authStrategy}: User login denied. User not found in required group.`); fn('denied'); return;}
+                    if (userMembershipMatch === false) { 
+                        parent.debug('authlog', `${authStrategy}: User login denied. User not found in required group.`); 
+                        req.session.loginmode = 1;
+                        req.session.messageid = 100; // Unable to create account.
+                        res.redirect(domain.url + getQueryPortion(req));
+                        return;
+                    }
                 }
 
                 // Check if user is in an administrator group
@@ -7010,7 +7016,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                 issuer: domain.authstrategies.oidc.issuer,
                 clientID: domain.authstrategies.oidc.clientid,
                 clientSecret: domain.authstrategies.oidc.clientsecret,
-                scope: ['profile', 'email', 'groups'],
+                scope: ['profile', 'email'],
             };
             const discoverOptions = async function(options){
                 if ((typeof domain.authstrategies.oidc.authorizationurl != 'string') || (typeof domain.authstrategies.oidc.tokenurl != 'string') || (typeof domain.authstrategies.oidc.userinfourl != 'string')) {
@@ -7021,18 +7027,19 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                     if (typeof domain.authstrategies.oidc.tokenurl == 'string') { options.tokenURL = domain.authstrategies.oidc.tokenurl; } else { options.tokenURL = issuer.metadata.token_endpoint; }
                     if (typeof domain.authstrategies.oidc.userinfourl == 'string') { options.userInfoURL = domain.authstrategies.oidc.userinfourl; } else { options.userInfoURL = issuer.metadata.userinfo_endpoint; }
                     if (typeof domain.authstrategies.oidc.callbackurl == 'string') { options.callbackURL = domain.authstrategies.oidc.callbackurl; } else { options.callbackURL = url + 'oidc-callback'; }
-                    parent.debug('authlog', 'OpenID: Discovered  ' + JSON.stringify(options));
+                    parent.debug('authlog', 'OpenID: Discovered  ' + JSON.stringify(options, null, 4));
                 }
                 return options;
             }
+            if (typeof domain.authstrategies.oidc.groups == 'object') { options.scope.push('groups') }
             discoverOptions(options).then(function(options) {
                 passport.use('oidc-' + domain.id, new OIDCStrategy.Strategy(options,
                     function verify(issuer, profile, verified) {
-                        parent.debug('authlog', `OpenID: Connecting to ${issuer} with the following options ` + JSON.stringify(options));
+                        parent.debug('authlog', `OpenID: Connecting to ${issuer} with the following options ` + JSON.stringify(options, null, 4));
                         var user = { sid: '~oidc:' + profile.id, name: profile.displayName, strategy: 'oidc' };
-                        if ( Array.isArray(profile.emails[0].value) ) { user.email = profile.emails[0].value[0]; } else { user.email = profile.emails[0].value; }
-                        if ( Array.isArray(profile.groups[0].value) ) { user.groups = profile.groups[0].value; } else { user.groups = [profile.groups[0].value]; }
-                        parent.debug('authlog', `OpenID: Configured: User: ${JSON.stringify(user)} FROM Profile: ${JSON.stringify(profile)}`);
+                        if (typeof profile.emails == 'object') { if (typeof profile.emails[0].value == 'string') { user.email = profile.emails[0].value; } else { user.email = profile.emails[0].value[0]; } } else if (typeof profile.emails == 'string') { user.email = profile.emails; }
+                        if (options.scope.indexOf('groups') >= 0) { if ( Array.isArray(profile.groups[0].value) ) { user.groups = profile.groups[0].value; } else { user.groups = [profile.groups[0].value]; } }
+                        parent.debug('authlog', `oidc: Configured:\n\tUser: ${JSON.stringify(user, null, 4)}\n\tFROM\n\tProfile: ${JSON.stringify(profile, null, 4)}`);
                         return verified(null, user);
                     }
                 ))
