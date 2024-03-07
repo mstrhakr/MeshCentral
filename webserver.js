@@ -843,13 +843,15 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
             if (userStrategy == 'oidc' && obj.common.validateObject(domain.authstrategies.oidc)) {
                 if (obj.common.validateString(domain.authstrategies.oidc.logouturl)) {
                     logouturl = domain.authstrategies.oidc.logouturl;
-                } else if (obj.common.validateString(domain.authstrategies.oidc.issuer.end_session_endpoint) && validateString(domain.authstrategies.oidc.client.post_logout_redirect_uri)) {
+                } else if (obj.common.validateString(domain.authstrategies.oidc.issuer?.end_session_endpoint) && obj.common.validateString(domain.authstrategies.oidc.client?.post_logout_redirect_uri)) {
                     logouturl = domain.authstrategies.oidc.issuer.end_session_endpoint + '?post_logout_redirect_uri=' + domain.authstrategies.oidc.client.post_logout_redirect_uri;
-                } else if (obj.common.validateString(domain.authstrategies.oidc.issuer.end_session_endpoint)) {
+                } else if (obj.common.validateString(domain.authstrategies.oidc.issuer?.end_session_endpoint)) {
                     logouturl = domain.authstrategies.oidc.issuer.end_session_endpoint;
                 }
                 // Log out all other strategies
-            } else if (obj.common.validateObject(domain.authstrategies[userStrategy]) && obj.common.validateString(domain.authstrategies[userStrategy].logouturl)) { logouturl = domain.authstrategies[userStrategy].logouturl; }
+            } else if (obj.common.validateObject(domain.authstrategies[userStrategy]) && obj.common.validateString(domain.authstrategies[userStrategy]?.logouturl)) {
+                logouturl = domain.authstrategies[userStrategy].logouturl;
+            }
             // If custom logout was setup, use it
             if (logouturl != null) {
                 parent.authLog('handleLogoutRequest', userStrategy.toUpperCase() + ': LOGOUT: ' + logouturl);
@@ -2839,7 +2841,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
             // User credentials are being passed in the URL. WARNING: Putting credentials in a URL is bad security... but people are requesting this option.
             obj.authenticate(req.query.user, req.query.pass, domain, function (err, userid, passhint, loginOptions) {
                 // 2FA is not supported in URL authentication method. If user has 2FA enabled, this login method fails.
-				var user = obj.users[userid];
+                var user = obj.users[userid];
                 if ((err == null) && checkUserOneTimePasswordRequired(domain, user, req, loginOptions) == true) {
                     handleRootRequestEx(req, res, domain, direct);
                 } else if ((userid != null) && (err == null)) {
@@ -5895,23 +5897,23 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                                 zipfile.readEntry();
                             });
                         });
-                    } else if (entry.fileName == 'MeshAgent.mpkg/Contents/Packages/internal.pkg/Contents/meshagent_osx64_LaunchAgent.plist' || 
+                    } else if (entry.fileName == 'MeshAgent.mpkg/Contents/Packages/internal.pkg/Contents/meshagent_osx64_LaunchAgent.plist' ||
                         entry.fileName == 'MeshAgent.mpkg/Contents/Packages/internal.pkg/Contents/meshagent_osx64_LaunchDaemon.plist' ||
                         entry.fileName == 'MeshAgent.mpkg/Contents/Packages/internal.pkg/Contents/Info.plist' ||
                         entry.fileName == 'MeshAgent.mpkg/Contents/Packages/internal.pkg/Contents/Resources/postflight' ||
-                        entry.fileName == 'MeshAgent.mpkg/Contents/Packages/internal.pkg/Contents/Resources/Postflight.sh' || 
+                        entry.fileName == 'MeshAgent.mpkg/Contents/Packages/internal.pkg/Contents/Resources/Postflight.sh' ||
                         entry.fileName == 'MeshAgent.mpkg/Uninstall.command') {
-                            // This is a special file entry, we need to fix it.
-                            zipfile.openReadStream(entry, function (err, readStream) {
-                                readStream.on('data', function (data) { if (readStream.xxdata) { readStream.xxdata += data; } else { readStream.xxdata = data; } });
-                                readStream.on('end', function () {
-                                    var options = { name: entry.fileName };
-                                    if (entry.fileName.endsWith('postflight') || entry.fileName.endsWith('Uninstall.command')) { options.mode = 493; }
-                                    archive.append(readStream.xxdata.toString().split('###SERVICENAME###').join(meshservicename).split('###COMPANYNAME###').join(meshcompanyname).split('###EXECUTABLENAME###').join(meshexecutablename), options);
-                                    zipfile.readEntry();
-                                });
+                        // This is a special file entry, we need to fix it.
+                        zipfile.openReadStream(entry, function (err, readStream) {
+                            readStream.on('data', function (data) { if (readStream.xxdata) { readStream.xxdata += data; } else { readStream.xxdata = data; } });
+                            readStream.on('end', function () {
+                                var options = { name: entry.fileName };
+                                if (entry.fileName.endsWith('postflight') || entry.fileName.endsWith('Uninstall.command')) { options.mode = 493; }
+                                archive.append(readStream.xxdata.toString().split('###SERVICENAME###').join(meshservicename).split('###COMPANYNAME###').join(meshcompanyname).split('###EXECUTABLENAME###').join(meshexecutablename), options);
+                                zipfile.readEntry();
                             });
-                        
+                        });
+
                     } else {
                         // Normal file entry
                         zipfile.openReadStream(entry, function (err, readStream) {
@@ -6455,11 +6457,13 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
         async function setupAllDomainAuthStrategies() {
             for (var i in parent.config.domains) {
                 if (parent.config.domains[i].dns != null) {
-                    if (typeof parent.config.domains[''].authstrategies != 'object') { parent.config.domains[''].authstrategies = { 'authStrategyFlags': 0 }; }
-                    parent.config.domains[''].authstrategies.authStrategyFlags |= await setupDomainAuthStrategy(parent.config.domains['']);
+                    if (typeof parent.config.domains[''].authstrategies == 'object') {
+                        await setupDomainAuthStrategy(parent.config.domains['']);
+                    }
                 } else {
-                    if (typeof parent.config.domains[i].authstrategies != 'object') { parent.config.domains[i].authstrategies = { 'authStrategyFlags': 0 }; }
-                    parent.config.domains[i].authstrategies.authStrategyFlags |= await setupDomainAuthStrategy(parent.config.domains[i]);
+                    if (typeof parent.config.domains[i].authstrategies != 'object') {
+                        await setupDomainAuthStrategy(parent.config.domains[i]);
+                    }
                 }
             }
         }
@@ -6585,18 +6589,18 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                     obj.app.post(url + 'pluginadmin.ashx', obj.bodyParser.urlencoded({ extended: false }), obj.handlePluginAdminPostReq);
                     obj.app.get(url + 'pluginHandler.js', obj.handlePluginJS);
                 }
-    
+
                 // New account CAPTCHA request
                 if ((domain.newaccountscaptcha != null) && (domain.newaccountscaptcha !== false)) {
                     obj.app.get(url + 'newAccountCaptcha.ashx', handleNewAccountCaptchaRequest);
                 }
-    
+
                 // Check CrowdSec Bounser if configured
                 if (parent.crowdSecBounser != null) {
                     obj.app.get(url + 'captcha.ashx', handleCaptchaGetRequest);
                     obj.app.post(url + 'captcha.ashx', obj.bodyParser.urlencoded({ extended: false }), handleCaptchaPostRequest);
                 }
-    
+
                 // Setup IP-KVM relay if supported
                 if (domain.ipkvm) {
                     obj.app.ws(url + 'ipkvm.ashx/*', function (ws, req) {
@@ -6610,7 +6614,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                         parent.ipKvmManager.handleIpKvmGet(domain, req, res, next);
                     });
                 }
-    
+
                 // Setup RDP unless indicated as disabled
                 if (domain.mstsc !== false) {
                     obj.app.get(url + 'mstsc.html', function (req, res) { handleMSTSCRequest(req, res, 'mstsc'); });
@@ -6622,7 +6626,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                         try { require('./apprelays.js').CreateMstscRelay(obj, obj.db, ws, req, obj.args, domain); } catch (ex) { console.log(ex); }
                     });
                 }
-    
+
                 // Setup SSH if needed
                 if (domain.ssh === true) {
                     obj.app.get(url + 'ssh.html', function (req, res) { handleMSTSCRequest(req, res, 'ssh'); });
@@ -6644,161 +6648,16 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                         });
                     });
                 }
-    
+
                 // Setup firebase push only server
                 if ((obj.parent.firebase != null) && (obj.parent.config.firebase)) {
                     if (obj.parent.config.firebase.pushrelayserver) { parent.debug('email', 'Firebase-pushrelay-handler'); obj.app.post(url + 'firebaserelay.aspx', obj.bodyParser.urlencoded({ extended: false }), handleFirebasePushOnlyRelayRequest); }
                     if (obj.parent.config.firebase.relayserver) { parent.debug('email', 'Firebase-relay-handler'); obj.app.ws(url + 'firebaserelay.aspx', handleFirebaseRelayRequest); }
                 }
 
-                // Setup auth strategies using passport if needed
-                if (typeof domain.authstrategies == 'object') {
-                    // Twitter
-                    if ((domain.authstrategies.authStrategyFlags & domainAuthStrategyConsts.twitter) != 0) {
-                        obj.app.get(url + 'auth-twitter', function (req, res, next) {
-                            var domain = getDomain(req);
-                            if (domain.passport == null) { next(); return; }
-                            domain.passport.authenticate('twitter-' + domain.id)(req, res, function (err) { console.log('c1', err, req.session); next(); });
-                        });
-                        obj.app.get(url + 'auth-twitter-callback', function (req, res, next) {
-                            var domain = getDomain(req);
-                            if (domain.passport == null) { next(); return; }
-                            if ((Object.keys(req.session).length == 0) && (req.query.nmr == null)) {
-                                // This is an empty session likely due to the 302 redirection, redirect again (this is a bit of a hack).
-                                var url = req.url;
-                                if (url.indexOf('?') >= 0) { url += '&nmr=1'; } else { url += '?nmr=1'; } // Add this to the URL to prevent redirect loop.
-                                res.set('Content-Type', 'text/html');
-                                res.end('<html><head><meta http-equiv="refresh" content=0;url="' + url + '"></head><body></body></html>');
-                            } else {
-                                domain.passport.authenticate('twitter-' + domain.id, { failureRedirect: '/' })(req, res, function (err) { if (err != null) { console.log(err); } next(); });
-                            }
-                        }, handleStrategyLogin);
-                    }
-
-                    // Google
-                    if ((domain.authstrategies.authStrategyFlags & domainAuthStrategyConsts.google) != 0) {
-                        obj.app.get(url + 'auth-google', function (req, res, next) {
-                            var domain = getDomain(req);
-                            if (domain.passport == null) { next(); return; }
-                            domain.passport.authenticate('google-' + domain.id, { scope: ['profile', 'email'] })(req, res, next);
-                        });
-                        obj.app.get(url + 'auth-google-callback', function (req, res, next) {
-                            var domain = getDomain(req);
-                            if (domain.passport == null) { next(); return; }
-                            domain.passport.authenticate('google-' + domain.id, { failureRedirect: '/' })(req, res, function (err) { if (err != null) { console.log(err); } next(); });
-                        }, handleStrategyLogin);
-                    }
-
-                    // GitHub
-                    if ((domain.authstrategies.authStrategyFlags & domainAuthStrategyConsts.github) != 0) {
-                        obj.app.get(url + 'auth-github', function (req, res, next) {
-                            var domain = getDomain(req);
-                            if (domain.passport == null) { next(); return; }
-                            domain.passport.authenticate('github-' + domain.id, { scope: ['user:email'] })(req, res, next);
-                        });
-                        obj.app.get(url + 'auth-github-callback', function (req, res, next) {
-                            var domain = getDomain(req);
-                            if (domain.passport == null) { next(); return; }
-                            domain.passport.authenticate('github-' + domain.id, { failureRedirect: '/' })(req, res, next);
-                        }, handleStrategyLogin);
-                    }
-
-                    // Azure
-                    if ((domain.authstrategies.authStrategyFlags & domainAuthStrategyConsts.azure) != 0) {
-                        obj.app.get(url + 'auth-azure', function (req, res, next) {
-                            var domain = getDomain(req);
-                            if (domain.passport == null) { next(); return; }
-                            domain.passport.authenticate('azure-' + domain.id, { state: obj.parent.encodeCookie({ 'p': 'azure' }, obj.parent.loginCookieEncryptionKey) })(req, res, next);
-                        });
-                        obj.app.get(url + 'auth-azure-callback', function (req, res, next) {
-                            var domain = getDomain(req);
-                            if (domain.passport == null) { next(); return; }
-                            if ((Object.keys(req.session).length == 0) && (req.query.nmr == null)) {
-                                // This is an empty session likely due to the 302 redirection, redirect again (this is a bit of a hack).
-                                var url = req.url;
-                                if (url.indexOf('?') >= 0) { url += '&nmr=1'; } else { url += '?nmr=1'; } // Add this to the URL to prevent redirect loop.
-                                res.set('Content-Type', 'text/html');
-                                res.end('<html><head><meta http-equiv="refresh" content=0;url="' + url + '"></head><body></body></html>');
-                            } else {
-                                if (req.query.state != null) {
-                                    var c = obj.parent.decodeCookie(req.query.state, obj.parent.loginCookieEncryptionKey, 10); // 10 minute timeout
-                                    if ((c != null) && (c.p == 'azure')) { domain.passport.authenticate('azure-' + domain.id, { failureRedirect: '/' })(req, res, next); return; }
-                                }
-                                next();
-                            }
-                        }, handleStrategyLogin);
-                    }
-
-                    // Setup OpenID Connect URLs
-                    if ((domain.authstrategies.authStrategyFlags & domainAuthStrategyConsts.oidc) != 0) {
-                        parent.authLog('setupHTTPHandlers', `OIDC: Setting up URLs`)
-                        obj.app.get(url + 'auth-oidc', function (req, res, next) {
-                            var domain = getDomain(req);
-                            if (domain.passport == null) { next(); return; }
-                            domain.passport.authenticate(`oidc-${domain.id}`, { failureRedirect: '/', failureFlash: true })(req, res, next);
-                        });
-                        let redirectPath
-                        if (obj.common.validateString(domain.authstrategies.oidc.client.redirect_uri)) {
-                            redirectPath = (new URL(domain.authstrategies.oidc.client.redirect_uri)).pathname
-                        } else if (obj.common.validateArray(domain.authstrategies.oidc.client.redirect_uris)) {
-                            redirectPath = (new URL(domain.authstrategies.oidc.client.redirect_uris[0])).pathname
-                        } else {
-                            redirectPath = url + 'auth-oidc-callback'
-                        }
-                        parent.authLog('setupHTTPHandlers', `OIDC: Redirect path: ${redirectPath}`)
-                        obj.app.get(redirectPath, obj.bodyParser.urlencoded({ extended: false }), function (req, res, next) {
-                            var domain = getDomain(req);
-                            if (domain.passport == null) { next(); return; }
-                            domain.passport.authenticate(`oidc-${domain.id}`, { failureRedirect: '/', failureFlash: true })(req, res, next);
-                        }, handleStrategyLogin);
-                    }
-
-                    // Generic SAML
-                    if ((domain.authstrategies.authStrategyFlags & domainAuthStrategyConsts.saml) != 0) {
-                        obj.app.get(url + 'auth-saml', function (req, res, next) {
-                            var domain = getDomain(req);
-                            if (domain.passport == null) { next(); return; }
-                            domain.passport.authenticate('saml-' + domain.id, { failureRedirect: '/', failureFlash: true })(req, res, next);
-                        });
-                        obj.app.post(url + 'auth-saml-callback', obj.bodyParser.urlencoded({ extended: false }), function (req, res, next) {
-                            var domain = getDomain(req);
-                            if (domain.passport == null) { next(); return; }
-                            domain.passport.authenticate('saml-' + domain.id, { failureRedirect: '/', failureFlash: true })(req, res, next);
-                        }, handleStrategyLogin);
-                    }
-
-                    // Intel SAML
-                    if ((domain.authstrategies.authStrategyFlags & domainAuthStrategyConsts.intelSaml) != 0) {
-                        obj.app.get(url + 'auth-intel', function (req, res, next) {
-                            var domain = getDomain(req);
-                            if (domain.passport == null) { next(); return; }
-                            domain.passport.authenticate('isaml-' + domain.id, { failureRedirect: '/', failureFlash: true })(req, res, next);
-                        });
-                        obj.app.post(url + 'auth-intel-callback', obj.bodyParser.urlencoded({ extended: false }), function (req, res, next) {
-                            var domain = getDomain(req);
-                            if (domain.passport == null) { next(); return; }
-                            domain.passport.authenticate('isaml-' + domain.id, { failureRedirect: '/', failureFlash: true })(req, res, next);
-                        }, handleStrategyLogin);
-                    }
-
-                    // JumpCloud SAML
-                    if ((domain.authstrategies.authStrategyFlags & domainAuthStrategyConsts.jumpCloudSaml) != 0) {
-                        obj.app.get(url + 'auth-jumpcloud', function (req, res, next) {
-                            var domain = getDomain(req);
-                            if (domain.passport == null) { next(); return; }
-                            domain.passport.authenticate('jumpcloud-' + domain.id, { failureRedirect: '/', failureFlash: true })(req, res, next);
-                        });
-                        obj.app.post(url + 'auth-jumpcloud-callback', obj.bodyParser.urlencoded({ extended: false }), function (req, res, next) {
-                            var domain = getDomain(req);
-                            if (domain.passport == null) { next(); return; }
-                            domain.passport.authenticate('jumpcloud-' + domain.id, { failureRedirect: '/', failureFlash: true })(req, res, next);
-                        }, handleStrategyLogin);
-                    }
-                }
-    
                 // Server redirects
                 if (parent.config.domains[i].redirects) { for (var j in parent.config.domains[i].redirects) { if (j[0] != '_') { obj.app.get(url + j, obj.handleDomainRedirect); } } }
-    
+
                 // Server picture
                 obj.app.get(url + 'serverpic.ashx', function (req, res) {
                     // Check if we have "server.jpg" in the data folder, if so, use that.
@@ -6826,7 +6685,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                         }
                     }
                 });
-    
+
                 // Receive mesh agent connections
                 obj.app.ws(url + 'agent.ashx', function (ws, req) {
                     var domain = checkAgentIpAddress(ws, req);
@@ -6835,7 +6694,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                     //console.log('Agent connect: ' + req.clientIp);
                     try { obj.meshAgentHandler.CreateMeshAgent(obj, obj.db, ws, req, obj.args, domain); } catch (e) { console.log(e); }
                 });
-    
+
                 // Setup MQTT broker over websocket
                 if (obj.parent.mqttbroker != null) {
                     obj.app.ws(url + 'mqtt.ashx', function (ws, req) {
@@ -6851,11 +6710,11 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                         obj.parent.mqttbroker.handle(serialtunnel); // Pass socket wrapper to MQTT broker
                     });
                 }
-    
+
                 // Setup any .well-known folders
                 var p = obj.parent.path.join(obj.parent.datapath, '.well-known' + ((parent.config.domains[i].id == '') ? '' : ('-' + parent.config.domains[i].id)));
                 if (obj.parent.fs.existsSync(p)) { obj.app.use(url + '.well-known', obj.express.static(p)); }
-    
+
                 // Setup the alternative agent-only port
                 if (obj.agentapp) {
                     // Receive mesh agent connections on alternate port
@@ -6865,7 +6724,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                         if (domain.agentkey && ((req.query.key == null) || (domain.agentkey.indexOf(req.query.key) == -1))) { return; } // If agent key is required and not provided or not valid, just hold the websocket and do nothing.
                         try { obj.meshAgentHandler.CreateMeshAgent(obj, obj.db, ws, req, obj.args, domain); } catch (e) { console.log(e); }
                     });
-    
+
                     // Setup mesh relay on alternative agent-only port
                     obj.agentapp.ws(url + 'meshrelay.ashx', function (ws, req) {
                         PerformWSSessionAuth(ws, req, true, function (ws1, req1, domain, user, cookie, authData) {
@@ -6876,41 +6735,41 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                             }
                         });
                     });
-    
+
                     // Allows agents to transfer files
                     obj.agentapp.ws(url + 'devicefile.ashx', function (ws, req) { obj.meshDeviceFileHandler.CreateMeshDeviceFile(obj, ws, null, req, domain); });
-    
+
                     // Setup agent to/from server file transfer handler
                     obj.agentapp.ws(url + 'agenttransfer.ashx', handleAgentFileTransfer); // Setup agent to/from server file transfer handler
-    
+
                     // Setup agent downloads for meshcore updates
                     obj.agentapp.get(url + 'meshagents', obj.handleMeshAgentRequest);
                 }
-    
+
                 // Setup web relay on this web server if needed
                 // We set this up when a DNS name is used as a web relay instead of a port
                 if (obj.args.relaydns != null) {
                     obj.webRelayRouter = require('express').Router();
-    
+
                     // This is the magic URL that will setup the relay session
                     obj.webRelayRouter.get('/control-redirect.ashx', function (req, res, next) {
                         if (obj.args.relaydns.indexOf(req.hostname) == -1) { res.sendStatus(404); return; }
                         if ((req.session.userid == null) && obj.args.user && obj.users['user//' + obj.args.user.toLowerCase()]) { req.session.userid = 'user//' + obj.args.user.toLowerCase(); } // Use a default user if needed
                         res.set({ 'Cache-Control': 'no-store' });
                         parent.debug('web', 'webRelaySetup');
-    
+
                         // Decode the relay cookie
                         if (req.query.c == null) { res.sendStatus(404); return; }
-    
+
                         // Decode and check if this relay cookie is valid
                         var userid, domainid, domain, nodeid, addr, port, appid, webSessionId, expire, publicid;
                         const urlCookie = obj.parent.decodeCookie(req.query.c, parent.loginCookieEncryptionKey, 32); // Allow cookies up to 32 minutes old. The web page will renew this cookie every 30 minutes.
                         if (urlCookie == null) { res.sendStatus(404); return; }
-    
+
                         // Decode the incoming cookie
                         if ((urlCookie.ruserid != null) && (urlCookie.x != null)) {
                             if (parent.webserver.destroyedSessions[urlCookie.ruserid + '/' + urlCookie.x] != null) { res.sendStatus(404); return; }
-    
+
                             // This is a standard user, figure out what our web relay will be.
                             if (req.session.x != urlCookie.x) { req.session.x = urlCookie.x; } // Set the sessionid if missing
                             if (req.session.userid != urlCookie.ruserid) { req.session.userid = urlCookie.ruserid; } // Set the session userid if missing
@@ -6923,7 +6782,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                             port = parseInt(req.query.p);
                             appid = parseInt(req.query.appid);
                             webSessionId = req.session.userid + '/' + req.session.x;
-    
+
                             // Check that all the required arguments are present
                             if ((req.session.userid == null) || (req.session.x == null) || (req.query.n == null) || (req.query.p == null) || (parent.webserver.destroyedSessions[webSessionId] != null) || ((req.query.appid != 1) && (req.query.appid != 2))) { res.redirect('/'); return; }
                         } else if (urlCookie.r == 8) {
@@ -6943,10 +6802,10 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                             expire = urlCookie.expire;
                             if ((expire != null) && (expire <= Date.now())) { parent.debug('webrelay', 'expired link'); res.sendStatus(404); return; }
                         }
-    
+
                         // No session identifier was setup, exit now
                         if (webSessionId == null) { res.sendStatus(404); return; }
-    
+
                         // Check that we have an exact session on any of the relay DNS names
                         var xrelaySessionId, xrelaySession, freeRelayHost, oldestRelayTime, oldestRelayHost;
                         for (var hostIndex in obj.args.relaydns) {
@@ -6970,7 +6829,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                                     }
                                     return;
                                 }
-    
+
                                 // Keep a record of the oldest web relay session, this could be useful.
                                 if (oldestRelayHost == null) {
                                     // Oldest host not set yet, set it
@@ -6985,12 +6844,12 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                                 }
                             }
                         }
-    
+
                         // Check that the user has rights to access this device
                         parent.webserver.GetNodeWithRights(domain, userid, nodeid, function (node, rights, visible) {
                             // If there is no remote control or relay rights, reject this web relay
                             if ((rights & 0x00200008) == 0) { res.sendStatus(404); return; } // MESHRIGHT_REMOTECONTROL or MESHRIGHT_RELAY
-    
+
                             // Check if there is a free relay DNS name we can use
                             var selectedHost = null;
                             if (freeRelayHost != null) {
@@ -7001,12 +6860,12 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                                 selectedHost = oldestRelayHost;
                             }
                             xrelaySessionId = webSessionId + '/' + selectedHost;
-    
+
                             if (selectedHost == req.hostname) {
                                 // If this web relay session id is not free, close it now
                                 xrelaySession = webRelaySessions[xrelaySessionId];
                                 if (xrelaySession != null) { xrelaySession.close(); delete webRelaySessions[xrelaySessionId]; }
-    
+
                                 // Create a web relay session
                                 const relaySession = require('./apprelays.js').CreateWebRelaySession(obj, db, req, args, domain, userid, nodeid, addr, port, appid, xrelaySessionId, expire, node.mtype);
                                 relaySession.xpublicid = publicid;
@@ -7016,13 +6875,13 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                                     // If there are not more relay sessions, clear the cleanup timer
                                     if ((Object.keys(webRelaySessions).length == 0) && (obj.cleanupTimer != null)) { clearInterval(webRelayCleanupTimer); obj.cleanupTimer = null; }
                                 }
-    
+
                                 // Set the multi-tunnel session
                                 webRelaySessions[xrelaySessionId] = relaySession;
-    
+
                                 // Setup the cleanup timer if needed
                                 if (obj.cleanupTimer == null) { webRelayCleanupTimer = setInterval(checkWebRelaySessionsTimeout, 10000); }
-    
+
                                 // Redirect to root.
                                 res.redirect('/');
                             } else {
@@ -7037,26 +6896,26 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                             }
                         });
                     });
-    
+
                     // Handle all incoming requests as web relays
                     obj.webRelayRouter.get('/*', function (req, res) { try { handleWebRelayRequest(req, res); } catch (ex) { console.log(ex); } })
-    
+
                     // Handle all incoming requests as web relays
                     obj.webRelayRouter.post('/*', function (req, res) { try { handleWebRelayRequest(req, res); } catch (ex) { console.log(ex); } })
-    
+
                     // Handle all incoming requests as web relays
                     obj.webRelayRouter.put('/*', function (req, res) { try { handleWebRelayRequest(req, res); } catch (ex) { console.log(ex); } })
-    
+
                     // Handle all incoming requests as web relays
                     obj.webRelayRouter.delete('/*', function (req, res) { try { handleWebRelayRequest(req, res); } catch (ex) { console.log(ex); } })
-    
+
                     // Handle all incoming requests as web relays
                     obj.webRelayRouter.options('/*', function (req, res) { try { handleWebRelayRequest(req, res); } catch (ex) { console.log(ex); } })
-    
+
                     // Handle all incoming requests as web relays
                     obj.webRelayRouter.head('/*', function (req, res) { try { handleWebRelayRequest(req, res); } catch (ex) { console.log(ex); } })
                 }
-    
+
                 // Indicates to ExpressJS that the override public folder should be used to serve static files.
                 if (parent.config.domains[i].webpublicpath != null) {
                     // Use domain public path
@@ -7065,10 +6924,10 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                     // Use override path
                     obj.app.use(url, obj.express.static(obj.parent.webPublicOverridePath));
                 }
-    
+
                 // Indicates to ExpressJS that the default public folder should be used to serve static files.
                 obj.app.use(url, obj.express.static(obj.parent.webPublicPath));
-    
+
                 // Start regular disconnection list flush every 2 minutes.
                 obj.wsagentsDisconnectionsTimer = setInterval(function () { obj.wsagentsDisconnections = {}; }, 120000);
             }
@@ -7142,7 +7001,26 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                     return cb(null, user);
                 }
             ));
-            authStrategyFlags |= domainAuthStrategyConsts.twitter;
+
+            // Setup login and callback routes
+            obj.app.get(url + 'auth-twitter', function (req, res, next) {
+                var domain = getDomain(req);
+                if (domain.passport == null) { next(); return; }
+                domain.passport.authenticate('twitter-' + domain.id)(req, res, function (err) { console.log('c1', err, req.session); next(); });
+            });
+            obj.app.get(url + 'auth-twitter-callback', function (req, res, next) {
+                var domain = getDomain(req);
+                if (domain.passport == null) { next(); return; }
+                if ((Object.keys(req.session).length == 0) && (req.query.nmr == null)) {
+                    // This is an empty session likely due to the 302 redirection, redirect again (this is a bit of a hack).
+                    var url = req.url;
+                    if (url.indexOf('?') >= 0) { url += '&nmr=1'; } else { url += '?nmr=1'; } // Add this to the URL to prevent redirect loop.
+                    res.set('Content-Type', 'text/html');
+                    res.end('<html><head><meta http-equiv="refresh" content=0;url="' + url + '"></head><body></body></html>');
+                } else {
+                    domain.passport.authenticate('twitter-' + domain.id, { failureRedirect: '/' })(req, res, function (err) { if (err != null) { console.log(err); } next(); });
+                }
+            }, handleStrategyLogin);
         }
 
         // Google
@@ -7159,7 +7037,18 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                     return cb(null, user);
                 }
             ));
-            authStrategyFlags |= domainAuthStrategyConsts.google;
+            
+            // Setup login and callback routes
+            obj.app.get(url + 'auth-google', function (req, res, next) {
+                var domain = getDomain(req);
+                if (domain.passport == null) { next(); return; }
+                domain.passport.authenticate('google-' + domain.id, { scope: ['profile', 'email'] })(req, res, next);
+            });
+            obj.app.get(url + 'auth-google-callback', function (req, res, next) {
+                var domain = getDomain(req);
+                if (domain.passport == null) { next(); return; }
+                domain.passport.authenticate('google-' + domain.id, { failureRedirect: '/' })(req, res, function (err) { if (err != null) { console.log(err); } next(); });
+            }, handleStrategyLogin);
         }
 
         // Github
@@ -7176,7 +7065,18 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                     return cb(null, user);
                 }
             ));
-            authStrategyFlags |= domainAuthStrategyConsts.github;
+
+            // Setup login and callback routes
+            obj.app.get(url + 'auth-github', function (req, res, next) {
+                var domain = getDomain(req);
+                if (domain.passport == null) { next(); return; }
+                domain.passport.authenticate('github-' + domain.id, { scope: ['user:email'] })(req, res, next);
+            });
+            obj.app.get(url + 'auth-github-callback', function (req, res, next) {
+                var domain = getDomain(req);
+                if (domain.passport == null) { next(); return; }
+                domain.passport.authenticate('github-' + domain.id, { failureRedirect: '/' })(req, res, next);
+            }, handleStrategyLogin);
         }
 
         // Azure
@@ -7198,7 +7098,30 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                     return done(null, user);
                 }
             ));
-            authStrategyFlags |= domainAuthStrategyConsts.azure;
+
+            // Setup login and callback routes
+            obj.app.get(url + 'auth-azure', function (req, res, next) {
+                var domain = getDomain(req);
+                if (domain.passport == null) { next(); return; }
+                domain.passport.authenticate('azure-' + domain.id, { state: obj.parent.encodeCookie({ 'p': 'azure' }, obj.parent.loginCookieEncryptionKey) })(req, res, next);
+            });
+            obj.app.get(url + 'auth-azure-callback', function (req, res, next) {
+                var domain = getDomain(req);
+                if (domain.passport == null) { next(); return; }
+                if ((Object.keys(req.session).length == 0) && (req.query.nmr == null)) {
+                    // This is an empty session likely due to the 302 redirection, redirect again (this is a bit of a hack).
+                    var url = req.url;
+                    if (url.indexOf('?') >= 0) { url += '&nmr=1'; } else { url += '?nmr=1'; } // Add this to the URL to prevent redirect loop.
+                    res.set('Content-Type', 'text/html');
+                    res.end('<html><head><meta http-equiv="refresh" content=0;url="' + url + '"></head><body></body></html>');
+                } else {
+                    if (req.query.state != null) {
+                        var c = obj.parent.decodeCookie(req.query.state, obj.parent.loginCookieEncryptionKey, 10); // 10 minute timeout
+                        if ((c != null) && (c.p == 'azure')) { domain.passport.authenticate('azure-' + domain.id, { failureRedirect: '/' })(req, res, next); return; }
+                    }
+                    next();
+                }
+            }, handleStrategyLogin);
         }
 
         // Generic SAML
@@ -7234,6 +7157,20 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                     ));
                     authStrategyFlags |= domainAuthStrategyConsts.saml
                 }
+
+                // Setup login and callback routes
+                if ((authStrategyFlags & domainAuthStrategyConsts.saml) != 0) {
+                    obj.app.get(url + 'auth-saml', function (req, res, next) {
+                        var domain = getDomain(req);
+                        if (domain.passport == null) { next(); return; }
+                        domain.passport.authenticate('saml-' + domain.id, { failureRedirect: '/', failureFlash: true })(req, res, next);
+                    });
+                    obj.app.post(url + 'auth-saml-callback', obj.bodyParser.urlencoded({ extended: false }), function (req, res, next) {
+                        var domain = getDomain(req);
+                        if (domain.passport == null) { next(); return; }
+                        domain.passport.authenticate('saml-' + domain.id, { failureRedirect: '/', failureFlash: true })(req, res, next);
+                    }, handleStrategyLogin);
+                }
             }
         }
 
@@ -7267,6 +7204,20 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                     ));
                     authStrategyFlags |= domainAuthStrategyConsts.intelSaml
                 }
+
+                // Setup login and callback routes
+                if ((authStrategyFlags & domainAuthStrategyConsts.intelSaml) != 0) {
+                    obj.app.get(url + 'auth-intel', function (req, res, next) {
+                        var domain = getDomain(req);
+                        if (domain.passport == null) { next(); return; }
+                        domain.passport.authenticate('isaml-' + domain.id, { failureRedirect: '/', failureFlash: true })(req, res, next);
+                    });
+                    obj.app.post(url + 'auth-intel-callback', obj.bodyParser.urlencoded({ extended: false }), function (req, res, next) {
+                        var domain = getDomain(req);
+                        if (domain.passport == null) { next(); return; }
+                        domain.passport.authenticate('isaml-' + domain.id, { failureRedirect: '/', failureFlash: true })(req, res, next);
+                    }, handleStrategyLogin);
+                }
             }
         }
 
@@ -7297,6 +7248,20 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                     ));
                     authStrategyFlags |= domainAuthStrategyConsts.jumpCloudSaml
                 }
+
+                // Setup login and callback routes
+                if ((authStrategyFlags & domainAuthStrategyConsts.jumpCloudSaml) != 0) {
+                    obj.app.get(url + 'auth-jumpcloud', function (req, res, next) {
+                        var domain = getDomain(req);
+                        if (domain.passport == null) { next(); return; }
+                        domain.passport.authenticate('jumpcloud-' + domain.id, { failureRedirect: '/', failureFlash: true })(req, res, next);
+                    });
+                    obj.app.post(url + 'auth-jumpcloud-callback', obj.bodyParser.urlencoded({ extended: false }), function (req, res, next) {
+                        var domain = getDomain(req);
+                        if (domain.passport == null) { next(); return; }
+                        domain.passport.authenticate('jumpcloud-' + domain.id, { failureRedirect: '/', failureFlash: true })(req, res, next);
+                    }, handleStrategyLogin);
+                }
             }
         }
 
@@ -7312,7 +7277,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                 if (typeof strategy.custom.tenant_id == 'string') { strategy.custom.preset = preset = 'azure' }
                 if (strategy.custom.customer_id || strategy.custom.identitysource || strategy.client.client_id.split('.')[2] == 'googleusercontent') { strategy.custom.preset = preset = 'google' }
             }
-            
+
             // Check issuer url
             let presetIssuer
             if (preset == 'azure') { presetIssuer = 'https://login.microsoftonline.com/' + strategy.custom.tenant_id + '/v2.0'; }
@@ -7569,8 +7534,44 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                     });
                 }
             }
+
+            // Setup OpenID Connect URLs
+            let authURL = url + 'auth-oidc'
+            parent.authLog('setupDomainAuthStrategy', `OIDC: Setting up authorization URL: ${authURL}`)
+            obj.app.get(authURL, function (req, res, next) {
+                var domain = getDomain(req);
+                if (domain.passport == null) { next(); return; }
+                domain.passport.authenticate('oidc' + (domain.id == null ? '' : ('-' + domain.id)), { failureRedirect: '/', failureFlash: true })(req, res, next);
+            });
+            let redirectPath
+            if (obj.common.validateString(domain.authstrategies.oidc.client.redirect_uri)) {
+                redirectPath = (new URL(domain.authstrategies.oidc.client.redirect_uri)).pathname
+            } else if (obj.common.validateArray(domain.authstrategies.oidc.client.redirect_uris)) {
+                redirectPath = (new URL(domain.authstrategies.oidc.client.redirect_uris[0])).pathname
+            } else {
+                redirectPath = url + 'auth-oidc-callback'
+            }
+            parent.authLog('setupDomainAuthStrategy', `OIDC: Redirect path: ${redirectPath}`)
+            obj.app.get(redirectPath, obj.bodyParser.urlencoded({ extended: false }), function (req, res, next) {
+                var domain = getDomain(req);
+                if (domain.passport == null) { next(); return; }
+                domain.passport.authenticate(`oidc-${domain.id}`, { failureRedirect: '/', failureFlash: true })(req, res, next);
+            }, handleStrategyLogin);
         }
-        return authStrategyFlags;
+
+        // Setup auth strategies using passport if needed
+        if (typeof domain.authstrategies == 'object') {
+            // Twitter
+            if ((authStrategyFlags & domainAuthStrategyConsts.twitter) != 0) {
+            }
+
+
+
+
+
+
+
+        }
     }
 
     // Handle an incoming request as a web relay 
